@@ -11,7 +11,5 @@ public class ServiceRegistrator : IPluginServiceRegistrator
 {
     /// <inheritdoc />
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
-    {
-        serviceCollection.AddHostedService<DateKeeper>();
-    }
+        => serviceCollection.AddHostedService<DateKeeper>();
 }

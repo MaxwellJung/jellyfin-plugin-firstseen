@@ -10,12 +10,10 @@ Status: in development, not ready for use.
 
 Jellyfin treats an upgraded file (new filename) as a new item with a new
 date added. Fix Date Added records the earliest date added it has seen for
-each title when Jellyfin removes or updates a movie or episode. An upgrade
-removes the old item first; that date is kept, and only then is the
-replacement's date restored (so a full library refresh does not rewrite
-dates). Titles are keyed by every stable id Jellyfin exposes (IMDb, TMDb,
-and episode series+season+episode keys), plus movie folder tags like
-`{imdb-…}`.
+each title when Jellyfin removes or updates a movie or episode, and restores
+that date when a replacement shows up newer. Titles are keyed by every
+stable id Jellyfin exposes (IMDb, TMDb, and episode series+season+episode
+keys).
 
 Dates are stored in
 `plugins/configurations/Jellyfin.Plugin.FixDateAdded.json`.
