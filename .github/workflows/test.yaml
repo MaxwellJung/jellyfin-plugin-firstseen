@@ -3,16 +3,19 @@ name: '🧪 Test Plugin'
 on:
   push:
     branches:
-      - master
+      - main
     paths-ignore:
       - '**/*.md'
   pull_request:
     branches:
-      - master
+      - main
     paths-ignore:
       - '**/*.md'
   workflow_dispatch:
 
 jobs:
-  call:
-    uses: jellyfin/jellyfin-meta-plugins/.github/workflows/test.yaml@master
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: ./tests/regression.sh

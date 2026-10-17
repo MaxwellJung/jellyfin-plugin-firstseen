@@ -30,6 +30,16 @@ dotnet build -c Release
 Copy `Jellyfin.Plugin.FixDateAdded/bin/Release/net9.0/Jellyfin.Plugin.FixDateAdded.dll`
 to a `FixDateAdded` folder in Jellyfin's `plugins` folder and restart Jellyfin.
 
+## Test
+
+```bash
+./tests/regression.sh
+```
+
+Builds the plugin, runs it in a throwaway Jellyfin 10.11.10 container (no
+network), fakes upgrades, and checks dates. Needs Docker and Python 3. CI
+runs this regression test on every pull request.
+
 ## License
 
 [GPLv3](LICENSE)
