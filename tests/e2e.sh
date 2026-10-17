@@ -15,7 +15,9 @@ auth='MediaBrowser Client="e2e", Device="e2e", DeviceId="e2e", Version="1"'
 
 cleanup() {
     docker rm -f "$name" >/dev/null 2>&1 || true
-    rm -rf "$work"
+    # Jellyfin runs as root and leaves root-owned files under $work.
+    docker run --rm -v "$work:/w" --entrypoint rm "$jellyfin_image" -rf /w >/dev/null 2>&1 || true
+    rm -rf "$work" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -140,9 +142,12 @@ echo "PASS D"
 
 echo "=== E: ItemRemoved path (wipe store, restart, upgrade)"
 docker stop "$name" >/dev/null
-rm -f "$store"
+# Store is root-owned; delete from a container, not the host.
+docker run --rm -v "$work/config:/config" --entrypoint rm "$jellyfin_image" -f \
+    /config/plugins/configurations/Jellyfin.Plugin.FixDateAdded.json
 docker start "$name" >/dev/null
 wait_for "Jellyfin after wipe" up
+[ ! -f "$store" ] || fail "store should be empty after wipe"
 replace "$movie/Fight.Club.2160p.mkv" "$movie/Fight.Club.Upgrade.mkv"
 refresh
 wait_for "movie restored via ItemRemoved only" date_is Fight.Club.Upgrade.mkv "$movie_date"
