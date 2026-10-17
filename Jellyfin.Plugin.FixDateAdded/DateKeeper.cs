@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
@@ -38,39 +39,59 @@ internal sealed class DateKeeper : IHostedService, IDisposable
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _libraryManager.ItemUpdated += OnItemUpdated;
+        _libraryManager.ItemRemoved += OnItemRemoved;
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
         _libraryManager.ItemUpdated -= OnItemUpdated;
+        _libraryManager.ItemRemoved -= OnItemRemoved;
         Save();
         return Task.CompletedTask;
     }
 
     public void Dispose() => _saveTimer.Dispose();
 
+    private void OnItemRemoved(object? sender, ItemChangeEventArgs e)
+    {
+        // Upgrades delete the old item first; record its date so the replacement can restore it.
+        Remember(e.Item);
+    }
+
     private void OnItemUpdated(object? sender, ItemChangeEventArgs e)
     {
         var item = e.Item;
-        var keys = item.GetUserDataKeys();
-        // The last key is the item's own ID, which changes on upgrade.
-        if (item is not (Movie or Episode) || keys.Count < 2)
+        var key = Remember(item);
+        if (key is null)
         {
             return;
         }
 
-        var key = keys[0];
-        var firstAdded = _dates.AddOrUpdate(key, item.DateCreated, (_, d) => d < item.DateCreated ? d : item.DateCreated);
+        var firstAdded = _dates[key];
         if (firstAdded == item.DateCreated)
         {
-            _saveTimer.Change(TimeSpan.FromSeconds(10), Timeout.InfiniteTimeSpan);
             return;
         }
 
         _logger.LogInformation("Setting date added of {Name} ({Key}) from {Current} to {FirstAdded}", item.Name, key, item.DateCreated, firstAdded);
         item.DateCreated = firstAdded;
         item.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    private string? Remember(BaseItem item)
+    {
+        var keys = item.GetUserDataKeys();
+        // The last key is the item's own ID, which changes on upgrade.
+        if (item is not (Movie or Episode) || keys.Count < 2)
+        {
+            return null;
+        }
+
+        var key = keys[0];
+        _dates.AddOrUpdate(key, item.DateCreated, (_, d) => d < item.DateCreated ? d : item.DateCreated);
+        _saveTimer.Change(TimeSpan.FromSeconds(10), Timeout.InfiniteTimeSpan);
+        return key;
     }
 
     private void Save()
