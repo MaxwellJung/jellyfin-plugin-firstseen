@@ -60,6 +60,7 @@ video() {
         -f lavfi -i color=c=black:s=320x240:d=1 -c:v libx264 "/media/$1"
 }
 
+# Move item to a new relative path (new file + delete old), for upgrades / folder changes.
 replace() {
     local old=$1 new=$2
     video "$new"
@@ -86,20 +87,30 @@ token=$(jf -X POST http://localhost:8096/Users/AuthenticateByName -d '{"Username
     python3 -c 'import sys, json; print(json.load(sys.stdin)["AccessToken"])')
 auth="$auth, Token=\"$token\""
 
+# Dual-id movie (TMDb + IMDb). After upgrade, move to IMDb-only folder to mimic
+# replacement that only has keys[0]=IMDb while remove stored under TMDb.
+dual="movies/Piper (2016) [tmdbid-399106][imdbid-tt5613056]"
+imdb_only="movies/Piper (2016) [imdbid-tt5613056]"
 movie="movies/Fight Club (1999) [tmdbid-550]"
 show="tv/Breaking Bad [tvdbid-81189]/Season 01"
 matrix="movies/The Matrix (1999) [tmdbid-603]"
 
 echo "=== First scan"
+video "$dual/Piper.720p.mkv"
 video "$movie/Fight.Club.720p.mkv"
 video "$show/Breaking.Bad.S01E01.720p.mkv"
 jf -X POST "http://localhost:8096/Library/VirtualFolders?name=Movies&collectionType=movies&paths=/media/movies&refreshLibrary=true" -d '{}'
 jf -X POST "http://localhost:8096/Library/VirtualFolders?name=Shows&collectionType=tvshows&paths=/media/tv&refreshLibrary=true" -d '{}'
+wait_for "Piper in library" has_file Piper.720p.mkv
 wait_for "movie recorded" in_store 550
 wait_for "episode recorded" in_store 81189001001
+# Dual-id item: keys[0] is TMDb when both exist.
+wait_for "Piper TMDb key in store" in_store 399106
+piper_date=$(date_of Piper.720p.mkv)
 movie_date=$(date_of Fight.Club.720p.mkv)
 episode_date=$(date_of Breaking.Bad.S01E01.720p.mkv)
-echo "movie=$movie_date episode=$episode_date"
+echo "piper=$piper_date movie=$movie_date episode=$episode_date"
+echo "store=$(cat "$store")"
 
 echo "=== A: same-folder upgrade (populated store)"
 replace "$movie/Fight.Club.720p.mkv" "$movie/Fight.Club.1080p.mkv"
@@ -108,6 +119,22 @@ refresh
 wait_for "movie date restored" date_is Fight.Club.1080p.mkv "$movie_date"
 wait_for "episode date restored" date_is Breaking.Bad.S01E01.1080p.mkv "$episode_date"
 echo "PASS A"
+
+echo "=== B: Piper upgrade into IMDb-only folder (TMDb vs IMDb key bug)"
+replace "$dual/Piper.720p.mkv" "$imdb_only/Piper.1080p.mkv"
+refresh
+wait_for "Piper date restored after IMDb-only folder move" date_is Piper.1080p.mkv "$piper_date"
+in_store tt5613056 || fail "expected IMDb key in store after Piper upgrade"
+# Original date must win under IMDb key (not the upgrade scan time).
+python3 -c "
+import json,sys
+d=json.load(open('$store'))
+got=d.get('tt5613056')
+want='$piper_date'
+if got!=want:
+    sys.exit(f'store tt5613056={got!r} want {want!r}')
+"
+echo "PASS B (key mismatch / Piper regression)"
 
 echo "=== C: new title keeps its own date"
 jf -X POST http://localhost:8096/System/Configuration/metadata -d '{"UseFileCreationTimeForDateAdded":false}'
@@ -118,7 +145,7 @@ matrix_date=$(date_of The.Matrix.720p.mkv)
 [[ "$matrix_date" > "$movie_date" ]] || fail "new movie date $matrix_date not after $movie_date"
 echo "PASS C"
 
-echo "=== D: upgrade after restart"
+echo "=== D: upgrade after restart (empty in-memory; store on disk)"
 docker restart "$name" >/dev/null
 wait_for "Jellyfin to restart" up
 replace "$movie/Fight.Club.1080p.mkv" "$movie/Fight.Club.2160p.mkv"
@@ -133,9 +160,9 @@ docker stop "$name" >/dev/null
 rm -f "$store"
 docker start "$name" >/dev/null
 wait_for "Jellyfin after wipe" up
-replace "$movie/Fight.Club.2160p.mkv" "$movie/Fight.Club.Upgrade.mkv"
+replace "$imdb_only/Piper.1080p.mkv" "$imdb_only/Piper.2160p.mkv"
 refresh
-wait_for "movie restored via ItemRemoved only" date_is Fight.Club.Upgrade.mkv "$movie_date"
+wait_for "Piper restored via ItemRemoved only" date_is Piper.2160p.mkv "$piper_date"
 echo "PASS E"
 
 echo "ALL PASS"
