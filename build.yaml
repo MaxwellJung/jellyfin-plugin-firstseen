@@ -1,0 +1,16 @@
+---
+name: "Fix Date Added"
+guid: "f5e78279-adee-4c33-b4a3-424f09e07ce4"
+version: "1.0.0.0"
+targetAbi: "10.11.10.0"
+framework: "net9.0"
+overview: "Short description about your plugin"
+description: >
+  This is a longer description that can span more than one
+  line and include details about your plugin.
+category: "General"
+owner: "jellyfin"
+artifacts:
+- "Jellyfin.Plugin.FixDateAdded.dll"
+changelog: >
+  changelog
