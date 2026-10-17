@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic e2e: build plugin, run throwaway Jellyfin (no network), fake upgrades.
+# Hermetic regression test: build plugin, run throwaway Jellyfin (no network), fake upgrades.
 # Needs Docker and Python 3.
 set -euo pipefail
 
@@ -8,10 +8,10 @@ jellyfin_image=jellyfin/jellyfin:10.11.10@sha256:f66273e014b307e4ac46778845ebc1e
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
-name=fix-date-added-e2e-$$
+name=fix-date-added-regression-$$
 user="$(id -u):$(id -g)"
 store="$work/config/plugins/configurations/Jellyfin.Plugin.FixDateAdded.json"
-auth='MediaBrowser Client="e2e", Device="e2e", DeviceId="e2e", Version="1"'
+auth='MediaBrowser Client="regression", Device="regression", DeviceId="regression", Version="1"'
 
 cleanup() {
     docker rm -f "$name" >/dev/null 2>&1 || true
@@ -92,9 +92,9 @@ wait_for "Jellyfin to start" up
 wait_for "startup wizard" wizard_ready
 
 jf -X POST http://localhost:8096/Startup/Configuration -d '{"UICulture":"en-US","MetadataCountryCode":"US","PreferredMetadataLanguage":"en"}'
-jf -X POST http://localhost:8096/Startup/User -d '{"Name":"e2e","Password":"e2e"}'
+jf -X POST http://localhost:8096/Startup/User -d '{"Name":"regression","Password":"regression"}'
 jf -X POST http://localhost:8096/Startup/Complete
-token=$(jf -X POST http://localhost:8096/Users/AuthenticateByName -d '{"Username":"e2e","Pw":"e2e"}' |
+token=$(jf -X POST http://localhost:8096/Users/AuthenticateByName -d '{"Username":"regression","Pw":"regression"}' |
     python3 -c 'import sys, json; print(json.load(sys.stdin)["AccessToken"])')
 auth="$auth, Token=\"$token\""
 
