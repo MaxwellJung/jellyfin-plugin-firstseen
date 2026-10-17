@@ -21,7 +21,8 @@ trap cleanup EXIT
 
 fail() {
     echo "FAIL: $*" >&2
-    docker logs "$name" 2>&1 | grep -E 'FixDateAdded|Fix Date Added|\[ERR\]' | tail -n 40 >&2 || true
+    docker inspect -f 'state={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' "$name" 2>&1 >&2 || true
+    docker logs "$name" 2>&1 | tail -n 80 >&2 || true
     echo "store: $(cat "$store" 2>/dev/null || echo missing)" >&2
     exit 1
 }
@@ -51,7 +52,14 @@ date_of() { items | awk -F'\t' -v f="$1" '$1 == f { print $2; exit }'; }
 has_file() { [ -n "$(date_of "$1")" ]; }
 date_is() { [ "$(date_of "$1")" = "$2" ]; }
 in_store() { grep -q "\"$1\"" "$store" 2>/dev/null; }
-up() { jf http://localhost:8096/System/Info/Public >/dev/null; }
+up() {
+    docker exec "$name" curl -sf http://localhost:8096/System/Info/Public |
+        python3 -c 'import sys,json; json.load(sys.stdin); sys.exit(0)'
+}
+wizard_ready() {
+    # Startup routes exist only until the wizard is finished; also confirms HTTP is usable.
+    docker exec "$name" curl -sf http://localhost:8096/Startup/User >/dev/null
+}
 refresh() { jf -X POST http://localhost:8096/Library/Refresh; }
 
 video() {
@@ -74,12 +82,14 @@ docker run --rm --user "$user" -e HOME=/tmp -v "$repo:/src:ro" -v "$work/config/
     cp /tmp/out/Jellyfin.Plugin.FixDateAdded.dll /out/'
 
 echo "Starting Jellyfin"
-docker run -d --name "$name" --user "$user" --network none \
+# Run as the image user (root). Binding --user to the host uid breaks the official
+# image on GitHub Actions (config init fails; wizard HTTP returns errors).
+docker run -d --name "$name" --network none \
     -v "$work/config:/config" -v "$work/cache:/cache" -v "$work/media:/media" "$jellyfin_image" >/dev/null
 wait_for "Jellyfin to start" up
+wait_for "startup wizard" wizard_ready
 
 jf -X POST http://localhost:8096/Startup/Configuration -d '{"UICulture":"en-US","MetadataCountryCode":"US","PreferredMetadataLanguage":"en"}'
-jf http://localhost:8096/Startup/User >/dev/null
 jf -X POST http://localhost:8096/Startup/User -d '{"Name":"e2e","Password":"e2e"}'
 jf -X POST http://localhost:8096/Startup/Complete
 token=$(jf -X POST http://localhost:8096/Users/AuthenticateByName -d '{"Username":"e2e","Pw":"e2e"}' |
